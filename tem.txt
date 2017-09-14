@@ -1,0 +1,125 @@
+//+------------------------------------------------------------------+
+//|                                                          Gas.mq4 |
+//|                        Copyright 2016, MetaQuotes Software Corp. |
+//|                                                  jass.ada@qq.com |
+//+------------------------------------------------------------------+
+#property copyright "Copyright 2016, MetaQuotes Software Corp."
+#property link      "jass.ada@qq.com"
+#property version   "1.00"
+#property strict
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+input int STABEL_BARS=10;
+input int MiniBoundGap = 100;
+
+int CalmIndex[5] = {0,0,0,0,0};
+int index_calm=0;
+
+bool Waiting = true;
+
+int OnInit()
+{
+//---
+   if(Symbol()!= "XNGUSD" || Period()!=PERIOD_M15){
+      Alert("this EA will just run at XNGUSD period of 15 minutes.");
+      ExpertRemove();
+   }
+   
+//---
+   return(INIT_SUCCEEDED);
+}
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+//---
+   
+}
+/////////////////////////////////////////////////
+void ReinitGlobal()
+{
+   Dealed = false;
+   Dealing = false;
+   CouldDeal = false;
+   Waiting = false;
+   UpBound = 0.0;
+   LowBound = 0.0;
+   index_calm=0;
+   for(int i=0;i<5; i++)
+   {
+      CalmIndex[i]=0;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+//---
+   if(Waiting)
+   {
+      if(index_calm+1 <5 && CalmIndex[index_calm] <Bars ){         
+         for(int j=25;j<60;j=j+2){
+            if(IsRoughFlat(0,j)){
+               index_calm +=1;
+               CalmIndex[index_calm] = Bars;
+               break;
+            } 
+            if(IsStrongFlat(0,15)){
+               index_calm +=1;
+               CalmIndex[index_calm] = Bars;               
+               break;
+            }
+         }
+      }
+      if(index_calm+1 >= 5)
+      {
+         Waiting = false;
+         CouldDeal = true;
+         CenterBar = CalmIndex[2];
+         index_calm=0;
+         for(int i=0;i<5; i++)
+         {
+            CalmIndex[i]=0;
+         }
+      }      
+   }
+   
+   if(CouldDeal&&!Dealed)
+   {
+      if(UpBound <0.001 && LowBound < 0.001){
+         UpBound = GetUpBound();
+         LowBound =GetLowBound();
+      }
+      if((UpBound-LowBound)/Point < MiniBoundGap){
+         double halfbound= (MiniBoundGap/2)*Point;
+         UpBound=UpBound+halfbound;
+         LowBound=LowBound-halfbound;
+      }
+      HedgeDeal();  // pending with expiration and stoploss.
+      Dealed=true;      
+   }   
+   
+   if(Dealed){
+      for(int pos=0;pos<total;pos++) 
+      { 
+         if(OrderSelect(pos,SELECT_BY_POS)==false) continue; 
+         if(OrderType()<=1) Dealing = true;
+      }
+      if(OrdersTotal()<=0)
+      {
+         ReinitGlobal();
+      }  
+   }
+   if(Dealing){
+      if(IsStopDealNeed())
+      {
+         StopDeal();
+         ReinitGlobal();
+      }
+   } 
+}
+//+------------------------------------------------------------------+
